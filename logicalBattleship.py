@@ -107,6 +107,7 @@ def knowledge_base_definition(GRID_SIZE):
             if y > 3:
                 kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x)}{y - 1} & H_{chr(65 + x)}{y - 2}==>H_{chr(65 + x)}{y - 3}'))
     
+    # Manage case when there are 2 adjacent hit where a cell of them is a corner of the grid (G[0][0], G[0][N], G[M][0] and G[M][N])
     kb.tell(expr(f'(H_A0 & H_A1)==>H_A2'))
     kb.tell(expr(f'(H_A0 & H_B0)==>H_C0'))
     kb.tell(expr(f'(H_J0 & H_I0)==>H_H0'))
@@ -115,6 +116,14 @@ def knowledge_base_definition(GRID_SIZE):
     kb.tell(expr(f'(H_A9 & H_B9)==>H_C9'))
     kb.tell(expr(f'(H_J9 & H_I9)==>H_H9'))
     kb.tell(expr(f'(H_J9 & M_J8)==>H_J7'))
+
+    # Manage when there are 2 hits adjacent to a grid edge
+    for x in range(1, GRID_SIZE - 1):
+        kb.tell(expr(f'(H_{chr(65 + x)}0 & H_{chr(65 + x)}1)==>H_{chr(65 + x)}2'))
+        kb.tell(expr(f'(H_{chr(65 + x)}8 & H_{chr(65 + x)}9)==>H_{chr(65 + x)}7'))
+    for y in range(1, GRID_SIZE - 1):
+        kb.tell(expr(f'(H_A{y} & H_B{y})==>H_C{y}'))
+        kb.tell(expr(f'(H_I{y} & H_J{y})==>H_H{y}'))
 
     return kb
 
