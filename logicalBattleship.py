@@ -1,10 +1,8 @@
 from aima.logic import *
 import random
-import string
 
 
 A, B, C, D, E, F, G, H, I, J = range(10)
-SCORE, X, Y = range(3)
 AMOUNT = 0
 SIZE = 1
 GRID_SIZE = 10
@@ -109,64 +107,129 @@ def knowledge_base_definition(GRID_SIZE):
             if y > 3:
                 kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x)}{y - 1} & H_{chr(65 + x)}{y - 2}==>H_{chr(65 + x)}{y - 3}'))
     
+    kb.tell(expr(f'(H_A0 & H_A1)==>H_A2'))
+    kb.tell(expr(f'(H_A0 & H_B0)==>H_C0'))
+    kb.tell(expr(f'(H_J0 & H_I0)==>H_H0'))
+    kb.tell(expr(f'(H_J0 & H_J1)==>H_J2'))
+    kb.tell(expr(f'(H_A9 & H_A8)==>H_A7'))
+    kb.tell(expr(f'(H_A9 & H_B9)==>H_C9'))
+    kb.tell(expr(f'(H_J9 & H_I9)==>H_H9'))
+    kb.tell(expr(f'(H_J9 & M_J8)==>H_J7'))
+
     return kb
 
 
-def generate_random_coordinates():
-    x = random.choice(string.ascii_uppercase[:10])
-    y = random.randint(0, 9)
-    return x, y
+def make_random_move(human_grid_own, last_hit, GRID_SIZE):
+    x = random.randint(0, GRID_SIZE - 1)
+    y = random.randint(0, GRID_SIZE - 1)
+
+    if human_grid_own[x][y] == 'P':
+        score = 'H'
+        last_hit = 0
+    else:     
+        score = 'M'
+    return score, x, y, last_hit
 
 
-'''
-def make_random_move(agent_grid_adv):
-    x, y = generate_random_coordinates()
-    if agent_grid_adv[x][y] == ('D' or 'P'):
-        print("Hit!")
-        kb.tell(expr(f'H_{chr(65 + x)}{y}'))
-    else: 
-        print("Miss!")
-        kb.tell(expr(f'M_{chr(65 + x)}{y}'))
-    return kb, x, y
+def make_inferenced_move(agent_grid_adv, kb, x, y, GRID_SIZE):
+    score = 'H'
+    if x != 0 and pl_fc_entails(kb, expr(f'H_{chr(65 + x - 1)}{y}')) and agent_grid_adv[x - 1][y] != 'H':
+        x = x - 1
+    elif x != (GRID_SIZE - 1) and pl_fc_entails(kb, expr(f'H_{chr(65 + x + 1)}{y}')) and agent_grid_adv[x + 1][y] != 'H':
+        x = x + 1
+    elif y != 0 and pl_fc_entails(kb, expr(f'H_{chr(65 + x)}{y - 1}')) and agent_grid_adv[x][y - 1] != 'H':
+        y = y - 1
+    elif y != (GRID_SIZE - 1) and pl_fc_entails(kb, expr(f'H_{chr(65 + x)}{y + 1}')) and agent_grid_adv[x][y + 1] != 'H':
+        y = y + 1
+    else:
+         score = 'M'
+    return score, x, y 
 
 
-def make_move(agent_grid_adv, kb, previous_move):
-    if previous_move[0] == 'H':
-        if previous_move[1] != A and pl_fc_entails(kb, expr(f'H_{chr(65 + previous_move[1] - 1)}{previous_move[2]}')) and agent_grid_adv[previous_move[1] - 1][previous_move[2]] != 'H':
-            print("Hit!")
-            kb.tell(expr(f'H_{chr(65 + previous_move[1] - 1)}{previous_move[2]}'))
-            x, y = previous_move[1] - 1, previous_move[2]
-        elif previous_move[1] != J and pl_fc_entails(kb, expr(f'H_{chr(65 + previous_move[1] + 1)}{previous_move[2]}')) and agent_grid_adv[previous_move[1] + 1][previous_move[2]] != 'H':
-            print("Hit!")
-            kb.tell(expr(f'H_{chr(65 + previous_move[1] + 1)}{previous_move[2]}'))
-            x, y = previous_move[1] + 1, previous_move[2]
-        elif previous_move[2] != 0 and pl_fc_entails(kb, expr(f'H_{chr(65 + previous_move[1])}{previous_move[2] - 1}')) and agent_grid_adv[previous_move[1]][previous_move[2] - 1] != 'H':
-            print("Hit!")
-            kb.tell(expr(f'H_{chr(65 + previous_move[1])}{previous_move[2] - 1}'))
-            x, y = previous_move[1], previous_move[2] - 1
-        elif previous_move[2] != 9 and pl_fc_entails(kb, expr(f'H_{chr(65 + previous_move[1])}{previous_move[2] + 1}')) and agent_grid_adv[previous_move[1]][previous_move[2] + 1] != 'H':
-            print("Hit!")
-            kb.tell(expr(f'H_{chr(65 + previous_move[1])}{previous_move[2] + 1}'))
-            x, y = previous_move[1], previous_move[2] + 1
+def make_adjacent_move(agent_grid_adv, human_grid_own, x, y, last_hit, h, k):
+    if last_hit == 0 and (x == 0 or agent_grid_adv[x - 1][y] == 'M'):
+        last_hit = 1
+    if last_hit == 0 and x != 0:
+        if human_grid_own[x - 1][y] != 'P':
+            score = 'M'
+            last_hit = 1
+            h = - 1
+            return score, x, y, last_hit, h, k
         else:
-            kb, x, y = make_random_move(agent_grid_adv)
-    else: 
-        kb, x, y = make_random_move(agent_grid_adv)
+            score = 'H'
+            last_hit = 0
+            x = x - 1
+            return score, x, y, last_hit, h, k
+
+    if last_hit == 1 and (x == GRID_SIZE - 1 or agent_grid_adv[x + 1][y] == 'M'):
+        last_hit = 2
+    if last_hit == 1 and x != GRID_SIZE - 1:
+        if human_grid_own[x + 1][y] != 'P':
+            score = 'M'
+            last_hit = 2
+            h = 1
+            return score, x, y, last_hit, h, k
+        else:
+            score = 'H'
+            last_hit = 0
+            x = x + 1
+            return score, x, y, last_hit, h, k
+        
+    if last_hit == 2 and (y == 0 or agent_grid_adv[x][y - 1] == 'M'):
+        last_hit = 3
+    if last_hit == 2 and y != 0:
+        if human_grid_own[x][y - 1] != 'P':
+            score = 'M'
+            last_hit = 3
+            k = -1
+            return score, x, y, last_hit, h, k
+        else:
+            score = 'H'
+            last_hit = 0
+            y = y - 1
+            return score, x, y, last_hit, h, k
+                
+    if last_hit == 3 and (y == GRID_SIZE - 1 or agent_grid_adv[x - 1][y] == 'M'):
+        last_hit = 4
+    if last_hit == 3 and y != GRID_SIZE - 1:
+        if human_grid_own[x][y + 1] != 'P':
+            score = 'M'
+            last_hit = 4
+            k = 1
+            return score, x, y, last_hit, h, k
+        else:
+            score = 'H'
+            last_hit = 0
+            x = y + 1
+            return score, x, y, last_hit, h, k
+
+
+def make_move(agent_grid_adv, human_grid_own, kb, score, x, y, last_hit, GRID_SIZE):
+    h = k = 0
+    if last_hit == 4:
+        score, x, y, last_hit = make_random_move(human_grid_own, last_hit, GRID_SIZE)
+    else:
+        score, x, y  = make_inferenced_move(agent_grid_adv, kb, x, y, GRID_SIZE)
+        if score == 'M':
+            score, x, y, last_hit, h, k = make_adjacent_move(human_grid_own, x, y, last_hit, h, k)
+        else:
+            last_hit = 0
+
+    print(f'Agent tries: x:{chr(65 + x + h)} y:{y + k}')
+    if score == 'M':
+        print('Miss!\n\n')
+    else:
+        print('Hit!\n\n')
+        
+    kb.tell(expr(f'{score}_{chr(65 + x + h)}{y + k}'))
+    agent_grid_adv[x + h][y + k] = score
     
-    return kb, x, y
-'''
-
-def make_move(agent_grid_adv, agent_grid_own, kb, score, x, y):
-    if score == 'H' and x != 0 and pl_fc_entails(kb, expr(f'Hit_{chr(65 + x - 1)}{y}')) and agent_grid_own[x - 1][y] != 'H':
-        print(f'Agent tries:{x - 1}{y}')
-        print('Hit!')
-        previous_move[SCORE] = 'H'
-        previous_move[X] = x - 1
-        previous_move[Y] = y
+    return agent_grid_adv, kb, score, x, y, last_hit
 
 
-# Test
-human_grid_own = human_grid_adv = agent_grid_adv = create_grid(GRID_SIZE)
+human_grid_own = create_grid(GRID_SIZE)
+human_grid_adv = create_grid(GRID_SIZE)
+agent_grid_adv = create_grid(GRID_SIZE)
 
 ships = {
     'Destroyer': (3, 3),
@@ -178,15 +241,15 @@ human_pawns = {
     'PatrolBoat': ships['PatrolBoat'][AMOUNT]    
 }
 
-human_grid_own[A][0] = 'D'
-human_grid_own[A][1] = 'D'
-human_grid_own[A][2] = 'D'
-human_grid_own[J][0] = 'D'
-human_grid_own[J][1] = 'D'
-human_grid_own[J][2] = 'D'
-human_grid_own[E][5] = 'D'
-human_grid_own[F][5] = 'D'
-human_grid_own[G][5] = 'D'
+human_grid_own[A][0] = 'P'
+human_grid_own[A][1] = 'P'
+human_grid_own[A][2] = 'P'
+human_grid_own[J][0] = 'P'
+human_grid_own[J][1] = 'P'
+human_grid_own[J][2] = 'P'
+human_grid_own[E][5] = 'P'
+human_grid_own[F][5] = 'P'
+human_grid_own[G][5] = 'P'
 human_grid_own[C][3] = 'P'
 human_grid_own[C][4] = 'P'
 human_grid_own[J][9] = 'P'
@@ -198,11 +261,23 @@ human_grid_own[G][1] = 'P'
 
 agent_grid_own = human_grid_own.copy()
 kb = knowledge_base_definition(GRID_SIZE)
+score = 'X'
+x = -1
+y = -1
+last_hit = 4
 
-previous_move = ('H', A, 1)
-agent_grid_adv[A][0] = 'H'
-kb.tell(expr('H_A0'))
-print_grid(human_grid_own)
-print_grid(agent_grid_adv)
-kb, x, y = make_move(agent_grid_adv, kb, previous_move)
-print(x, y)
+#agent_grid_adv[A][0] = 'H'
+#agent_grid_adv[A][1] = 'H'
+#kb.tell(expr('H_A0'))
+#kb.tell(expr('H_A1'))
+
+agent_grid_adv[C][3] = 'H'
+kb.tell(expr('H_C3'))
+x = C
+y = 3
+last_hit = 0
+for _ in range(4):
+    agent_grid_adv, kb, score, x, y, last_hit = make_move(agent_grid_adv, human_grid_own, kb, score, x, y, last_hit, GRID_SIZE)
+    print(f'score:{score} x:{x} y:{y} last_hit:{last_hit}')
+    print_grid(human_grid_own)
+    print_grid(agent_grid_adv)
