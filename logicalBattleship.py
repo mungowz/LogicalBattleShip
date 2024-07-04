@@ -1,292 +1,297 @@
-from aima.logic import *
+from aima.logic import PropDefiniteKB, expr, pl_fc_entails
 import random
 
+class BattleshipGame:
+    def __init__(self, size, human_ships, agent_ships):
+        self.size = size  # Grid size
+        self.human_ships = human_ships  # List of human ships, each represented by a list of tuples (cell positions occupied by the ship)
+        self.agent_ships = agent_ships  # List of agent ships, each represented by a list of tuples (cell positions occupied by the ship)
+        self.human_sunk = []
+        self.agent_sunk = []
+        self.agent = BattleshipAgent(size) # Agent instance
+        self.human_grid_own = self.create_grid() # Human grid where one's pawns are placed
+        self.human_grid_adv = self.create_grid() # Human grid where the moves made are memorized
+        self.agent_grid_own = self.create_grid() # Agent grid where one's pawns are placed
+        self.agent_grid_adv = self.create_grid() # Agent grid where the moves made are memorized
+        self.human_hits = []
 
-A, B, C, D, E, F, G, H, I, J = range(10)
-AMOUNT = 0
-SIZE = 1
-GRID_SIZE = 10
+    def create_grid(self):
+        grid = []
+        for i in range(self.size):
+            grid.append([])
+            for j in range(self.size):
+                grid[i].append('*')
+        return grid
 
-
-def create_grid(GRID_SIZE):
-    grid = []
-
-    for i in range(GRID_SIZE):
-        grid.append([])
-        for j in range(GRID_SIZE):
-            grid[i].append('*')
-    
-    return grid
-
-
-def print_grid(grid):
-    print('   ' + ' '.join(f'{i:2}' for i in range(0, len(grid))))
-
-    for i in range(len(grid)):
-        row_label = chr(65 + i)
-        row_content = ' '.join(f' {grid[i][j]}' for j in range(len(grid[0])))
-        print(f"{row_label}  {row_content}")
-    print('\n')
-
-
-def knowledge_base_definition(GRID_SIZE):
-    kb = PropDefiniteKB()
-
-    # U = Unknown  H = Hit  M = Miss  S = Sunk  E = Empty
-
-    # Initialize all 10 x 10 grid as an empty grid
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            kb.tell(expr(f'U_{chr(65 + x)}{y}'))
-
-    # A Miss is equal to Empty and viceversa, so this is a biconditional which can be written as 2 implications
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            kb.tell(expr(f'M_{chr(65 + x)}{y}==>E_{chr(65 + x)}{y}'))
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            kb.tell(expr(f'E_{chr(65 + x)}{y}==>M_{chr(65 + x)}{y}'))
-
-    # Case when we have 1 Hit and 3 adjacent Misses (edges of the grid are excluded)
-    for x in range(1, GRID_SIZE - 1):
-        for y in range(1, GRID_SIZE - 1):
-            kb.tell(expr(f'(H_{chr(65 + x)}{y} & M_{chr(65 + x)}{y - 1} & M_{chr(65 + x - 1)}{y} & M_{chr(65 + x + 1)}{y})==>H_{chr(65 + x)}{y + 1}'))
-            kb.tell(expr(f'(H_{chr(65 + x)}{y} & M_{chr(65 + x)}{y + 1} & M_{chr(65 + x + 1)}{y} & M_{chr(65 + x - 1)}{y})==>H_{chr(65 + x)}{y - 1}'))
-            kb.tell(expr(f'(H_{chr(65 + x)}{y} & M_{chr(65 + x - 1)}{y} & M_{chr(65 + x)}{y - 1} & M_{chr(65 + x)}{y + 1})==>H_{chr(65 + x + 1)}{y}'))
-            kb.tell(expr(f'(H_{chr(65 + x)}{y} & M_{chr(65 + x + 1)}{y} & M_{chr(65 + x)}{y - 1} & M_{chr(65 + x)}{y + 1})==>H_{chr(65 + x - 1)}{y}'))
-
-    # Case when we have 1 Hit and 2 adjacent Misses, on the left and right edge of the grid (G[0][0], G[0][N], G[M][0] and G[M][N])
-    for x in range(1, GRID_SIZE - 1):
-        kb.tell(expr(f'(H_{chr(65 + x)}0 & M_{chr(65 + x - 1)}0 & M_{chr(65 + x + 1)}0)==>H_{chr(65 + x)}1'))
-        kb.tell(expr(f'(H_{chr(65 + x)}0 & M_{chr(65 + x)}1 & M_{chr(65 + x + 1)}0)==>H_{chr(65 + x - 1)}0'))
-        kb.tell(expr(f'(H_{chr(65 + x)}0 & M_{chr(65 + x)}1 & M_{chr(65 + x - 1)}0)==>H_{chr(65 + x + 1)}0'))
-        kb.tell(expr(f'(H_{chr(65 + x)}9 & M_{chr(65 + x - 1)}9 & M_{chr(65 + x + 1)}9)==>H_{chr(65 + x)}8'))
-        kb.tell(expr(f'(H_{chr(65 + x)}9 & M_{chr(65 + x)}8 & M_{chr(65 + x + 1)}9)==>H_{chr(65 + x - 1)}9'))
-        kb.tell(expr(f'(H_{chr(65 + x)}9 & M_{chr(65 + x)}8 & M_{chr(65 + x - 1)}9)==>H_{chr(65 + x + 1)}9'))
-
-    # Case when we have 1 Hit and 2 adjacent Misses, on the lowest and highest edge of the grid (G[0][0], G[0][N], G[M][0] and G[M][N])
-    for y in range(1, GRID_SIZE - 1):
-        kb.tell(expr(f'(H_A{y} & M_A{y - 1} & M_A{y + 1})==>H_B{y}'))
-        kb.tell(expr(f'(H_A{y} & M_B{y} & M_A{y + 1})==>H_B{y - 1}'))
-        kb.tell(expr(f'(H_A{y} & M_B{y} & M_A{y - 1})==>H_B{y + 1}'))
-        kb.tell(expr(f'(H_J{y} & M_J{y - 1} & M_J{y + 1})==>H_B{y}'))
-        kb.tell(expr(f'(H_J{y} & M_I{y} & M_J{y + 1})==>H_J{y - 1}'))
-        kb.tell(expr(f'(H_J{y} & M_I{y} & M_J{y - 1})==>H_J{y + 1}'))
-
-    # Case for G[0][0], G[0][N], G[M][0] and G[M][N]
-    kb.tell(expr(f'(H_A0 & M_A1)==>H_B0'))
-    kb.tell(expr(f'(H_A0 & M_B0)==>H_A1'))
-    kb.tell(expr(f'(H_J0 & M_I0)==>H_J1'))
-    kb.tell(expr(f'(H_J0 & M_J1)==>H_I0'))
-    kb.tell(expr(f'(H_A9 & M_A8)==>H_B9'))
-    kb.tell(expr(f'(H_A9 & M_B9)==>H_A8'))
-    kb.tell(expr(f'(H_J9 & M_I9)==>H_J8'))
-    kb.tell(expr(f'(H_J9 & M_J8)==>H_I9'))
-    
-    # All adjacent cells around a Sunk cell are Empty
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            if (x != 0):
-                kb.tell(expr(f'(S_{chr(65 + x)}{y} & U_{chr(65 + x - 1)}{y})==>E_{chr(65 + x - 1)}{y}'))
-            if (x != GRID_SIZE - 1):
-                kb.tell(expr(f'(S_{chr(65 + x)}{y} & U_{chr(65 + x + 1)}{y})==>E_{chr(65 + x + 1)}{y}'))
-            if (y != 0):
-                kb.tell(expr(f'(S_{chr(65 + x)}{y} & U_{chr(65 + x)}{y - 1})==>E_{chr(65 + x)}{y - 1}'))
-            if (y !=  GRID_SIZE - 1):
-                kb.tell(expr(f'(S_{chr(65 + x)}{y} & U_{chr(65 + x)}{y + 1})==>E_{chr(65 + x)}{y + 1}'))
-    
-    # Case when there is 1 Miss and 2 adjacent Hits
-    for x in range(GRID_SIZE):
-        for y in range(GRID_SIZE):
-            if x < GRID_SIZE - 3:
-                kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x + 1)}{y} & H_{chr(65 + x + 2)}{y}==>H_{chr(65 + x + 3)}{y}'))
-            if x > 3:
-                kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x - 1)}{y} & H_{chr(65 + x - 2)}{y}==>H_{chr(65 + x - 3)}{y}'))
-            if y < GRID_SIZE - 3:
-                kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x)}{y + 1} & H_{chr(65 + x)}{y + 2}==>H_{chr(65 + x)}{y + 3}'))
-            if y > 3:
-                kb.tell(expr(f'(M_{chr(65 + x)}{y}) & H_{chr(65 + x)}{y - 1} & H_{chr(65 + x)}{y - 2}==>H_{chr(65 + x)}{y - 3}'))
-    
-    # Manage case when there are 2 adjacent hit where a cell of them is a corner of the grid (G[0][0], G[0][N], G[M][0] and G[M][N])
-    kb.tell(expr(f'(H_A0 & H_A1)==>H_A2'))
-    kb.tell(expr(f'(H_A0 & H_B0)==>H_C0'))
-    kb.tell(expr(f'(H_J0 & H_I0)==>H_H0'))
-    kb.tell(expr(f'(H_J0 & H_J1)==>H_J2'))
-    kb.tell(expr(f'(H_A9 & H_A8)==>H_A7'))
-    kb.tell(expr(f'(H_A9 & H_B9)==>H_C9'))
-    kb.tell(expr(f'(H_J9 & H_I9)==>H_H9'))
-    kb.tell(expr(f'(H_J9 & M_J8)==>H_J7'))
-
-    # Manage when there are 2 hits adjacent to a grid edge
-    for x in range(1, GRID_SIZE - 1):
-        kb.tell(expr(f'(H_{chr(65 + x)}0 & H_{chr(65 + x)}1)==>H_{chr(65 + x)}2'))
-        kb.tell(expr(f'(H_{chr(65 + x)}8 & H_{chr(65 + x)}9)==>H_{chr(65 + x)}7'))
-    for y in range(1, GRID_SIZE - 1):
-        kb.tell(expr(f'(H_A{y} & H_B{y})==>H_C{y}'))
-        kb.tell(expr(f'(H_I{y} & H_J{y})==>H_H{y}'))
-
-    return kb
-
-
-def make_random_move(human_grid_own, last_hit, GRID_SIZE):
-    x = random.randint(0, GRID_SIZE - 1)
-    y = random.randint(0, GRID_SIZE - 1)
-
-    if human_grid_own[x][y] == 'P':
-        score = 'H'
-        last_hit = 0
-    else:     
-        score = 'M'
-    return score, x, y, last_hit
-
-
-def make_inferenced_move(agent_grid_adv, kb, x, y, GRID_SIZE):
-    score = 'H'
-    if x != 0 and pl_fc_entails(kb, expr(f'H_{chr(65 + x - 1)}{y}')) and agent_grid_adv[x - 1][y] != 'H':
-        x = x - 1
-    elif x != (GRID_SIZE - 1) and pl_fc_entails(kb, expr(f'H_{chr(65 + x + 1)}{y}')) and agent_grid_adv[x + 1][y] != 'H':
-        x = x + 1
-    elif y != 0 and pl_fc_entails(kb, expr(f'H_{chr(65 + x)}{y - 1}')) and agent_grid_adv[x][y - 1] != 'H':
-        y = y - 1
-    elif y != (GRID_SIZE - 1) and pl_fc_entails(kb, expr(f'H_{chr(65 + x)}{y + 1}')) and agent_grid_adv[x][y + 1] != 'H':
-        y = y + 1
-    else:
-         score = 'M'
-    return score, x, y 
-
-
-def make_adjacent_move(agent_grid_adv, human_grid_own, x, y, last_hit, h, k):
-    if last_hit == 0 and (x == 0 or agent_grid_adv[x - 1][y] == 'M'):
-        last_hit = 1
-    if last_hit == 0 and x != 0:
-        if human_grid_own[x - 1][y] != 'P':
-            score = 'M'
-            last_hit = 1
-            h = - 1
-            return score, x, y, last_hit, h, k
+    def print_grid(self, grid, turn):
+        if turn == 'A':
+            print('\033[32m   \033[0m' + '\033[32m \033[0m'.join(f'\033[32m{i:2}\033[0m' for i in range(0, self.size)))
         else:
-            score = 'H'
-            last_hit = 0
-            x = x - 1
-            return score, x, y, last_hit, h, k
+            print('   ' + ' '.join(f'{i:2}' for i in range(0, self.size)))
+        for i in range(self.size):
+            row_label = chr(65 + i)
+            row_content = ' '.join(f' {grid[i][j]}' for j in range(len(grid[0])))
+            if turn == 'A':
+                print(f"\033[32m{row_label}  {row_content}\033[0m")
+            else:
+                print(f"{row_label}  {row_content}")
+        print('\n')
 
-    if last_hit == 1 and (x == GRID_SIZE - 1 or agent_grid_adv[x + 1][y] == 'M'):
-        last_hit = 2
-    if last_hit == 1 and x != GRID_SIZE - 1:
-        if human_grid_own[x + 1][y] != 'P':
-            score = 'M'
-            last_hit = 2
-            h = 1
-            return score, x, y, last_hit, h, k
+    def check_hit(self, cell, ships, grid):
+        """Check if a cell hits a ship"""
+        for ship in ships:
+            if cell in ship:
+                grid[cell[0]][cell[1]] = 'H'
+                return 'hit'
+        grid[cell[0]][cell[1]] = 'M'
+        return 'miss'
+
+    def check_sunk(self, cell, turn):
+        if turn == 'A':
+            for ship in self.human_ships:
+                if ship not in self.human_sunk: 
+                    if all(cell in self.agent.hits for cell in ship):
+                        self.human_sunk.append(ship)
+                        print("\033[32msunk!\n\033[0m")
+                        for cell in ship:
+                            self.agent.kb.tell(expr(f'Sunk_{cell}'))
+                            self.agent_grid_adv[cell[0]][cell[1]] = 'S'
         else:
-            score = 'H'
-            last_hit = 0
-            x = x + 1
-            return score, x, y, last_hit, h, k
-        
-    if last_hit == 2 and (y == 0 or agent_grid_adv[x][y - 1] == 'M'):
-        last_hit = 3
-    if last_hit == 2 and y != 0:
-        if human_grid_own[x][y - 1] != 'P':
-            score = 'M'
-            last_hit = 3
-            k = -1
-            return score, x, y, last_hit, h, k
-        else:
-            score = 'H'
-            last_hit = 0
-            y = y - 1
-            return score, x, y, last_hit, h, k
-                
-    if last_hit == 3 and (y == GRID_SIZE - 1 or agent_grid_adv[x - 1][y] == 'M'):
-        last_hit = 4
-    if last_hit == 3 and y != GRID_SIZE - 1:
-        if human_grid_own[x][y + 1] != 'P':
-            score = 'M'
-            last_hit = 4
-            k = 1
-            return score, x, y, last_hit, h, k
-        else:
-            score = 'H'
-            last_hit = 0
-            x = y + 1
-            return score, x, y, last_hit, h, k
+            for ship in self.agent_ships:
+                if ship not in self.agent_sunk: 
+                    if all(cell in self.human_hits for cell in ship):
+                        self.agent_sunk.append(ship)
+                        print("\033[32mSunk!\n\033[0m")
+                        for cell in ship:
+                            self.human_grid_adv[cell[0]][cell[1]] = 'S'
 
+    def get_letter(self):
+        while True:
+            letter = input("Choose a letter between A and J: ").upper()
+            if letter in 'ABCDEFGHIJ':
+                return letter
+            else:
+                print("Invalid letter. Try again.")
 
-def make_move(agent_grid_adv, human_grid_own, kb, score, x, y, last_hit, GRID_SIZE):
-    h = k = 0
-    if last_hit == 4:
-        score, x, y, last_hit = make_random_move(human_grid_own, last_hit, GRID_SIZE)
-    else:
-        score, x, y  = make_inferenced_move(agent_grid_adv, kb, x, y, GRID_SIZE)
-        if score == 'M':
-            score, x, y, last_hit, h, k = make_adjacent_move(human_grid_own, x, y, last_hit, h, k)
-        else:
-            last_hit = 0
+    def get_number(self):
+        while True:
+            number = int(input("Choose a number between 0 and 9: "))
+            if 0 <= number <= 9:
+                return number
+            else:
+                print("Invalid number. Try again.")
 
-    print(f'Agent tries: x:{chr(65 + x + h)} y:{y + k}')
-    if score == 'M':
-        print('Miss!\n\n')
-    else:
-        print('Hit!\n\n')
-        
-    kb.tell(expr(f'{score}_{chr(65 + x + h)}{y + k}'))
-    agent_grid_adv[x + h][y + k] = score
-    
-    return agent_grid_adv, kb, score, x, y, last_hit
+    def human_next_move(self):
+        x = self.get_letter()
+        y = self.get_number()
+        return (ord(x) - 65, y)
 
+    def play(self):
+        """Simulate the game"""
+        for ship in self.human_ships:
+            for i, j in ship:
+                self.human_grid_own[i][j] = 'P'
+        for ship in self.agent_ships:
+            for i, j in ship:
+                self.agent_grid_own[i][j] = 'P'
 
-human_grid_own = create_grid(GRID_SIZE)
-human_grid_adv = create_grid(GRID_SIZE)
-agent_grid_adv = create_grid(GRID_SIZE)
+        turn = random.choice(['H', 'A'])
 
-ships = {
-    'Destroyer': (3, 3),
-    'PatrolBoat': (4, 2)
-}
+        while True:
+            if (turn == 'A'):
+                move = self.agent.choose_next_move()
+                print(f"\033[32mAI tries: ({chr(65 + move[0])}, {move[1]})\033[0m")
+                result = self.check_hit(move, self.human_ships, self.agent_grid_adv)
+                print(f"\033[32m{result}!\n\033[0m")
+                self.check_sunk(move, turn)
+                self.agent.add_knowledge(move, result)
+                print("\033[32mUser own grid:\n\033[0m")
+                self.print_grid(self.human_grid_own, turn)
+                print("\033[32mAI opponent grid: \033[0m")
+                self.print_grid(self.agent_grid_adv, turn)
 
-human_pawns = {
-    'Destroyer': ships['Destroyer'][AMOUNT],
-    'PatrolBoat': ships['PatrolBoat'][AMOUNT]    
-}
+                if len(self.agent.hits) == sum(len(ship) for ship in self.human_ships):
+                    print("\033[32mAll ships sunk!\033[0m")
+                    print("\033[32mAI won\033[0m!")
+                    break
+                turn = 'H'
+            else:
+                move = self.human_next_move()
+                print(f"User tries: ({chr(65 + move[0])}, {move[1]})")
+                result = self.check_hit(move, self.agent_ships, self.human_grid_adv)
+                if result == 'hit':
+                    self.human_hits.append(move)
+                print(f"{result}!\n")
+                self.check_sunk(move, turn)
+                print("AI own grid:\n")
+                self.print_grid(self.agent_grid_own, turn)
+                print("User opponent grid: ")
+                self.print_grid(self.human_grid_adv, turn)
 
-human_grid_own[A][0] = 'P'
-human_grid_own[A][1] = 'P'
-human_grid_own[A][2] = 'P'
-human_grid_own[J][0] = 'P'
-human_grid_own[J][1] = 'P'
-human_grid_own[J][2] = 'P'
-human_grid_own[E][5] = 'P'
-human_grid_own[F][5] = 'P'
-human_grid_own[G][5] = 'P'
-human_grid_own[C][3] = 'P'
-human_grid_own[C][4] = 'P'
-human_grid_own[J][9] = 'P'
-human_grid_own[I][9] = 'P'
-human_grid_own[J][7] = 'P'
-human_grid_own[I][7] = 'P'
-human_grid_own[G][0] = 'P'
-human_grid_own[G][1] = 'P'
+                if len(self.human_hits) == sum(len(ship) for ship in self.agent_ships):
+                    print("All ships sunk!")
+                    print("Human won!")
+                    break
+                turn = 'A'
 
-agent_grid_own = human_grid_own.copy()
-kb = knowledge_base_definition(GRID_SIZE)
-score = 'X'
-x = -1
-y = -1
-last_hit = 4
+class BattleshipAgent:
+    def __init__(self, size):
+        self.size = size  # Grid size
+        self.kb = PropDefiniteKB()  # Knowledge base
+        self.hits = []  # List of successfully hit boxes
+        self.misses = []  # List of boxes hit unsuccessfully
+        self.knowledge_base_definition()
 
-#agent_grid_adv[A][0] = 'H'
-#agent_grid_adv[A][1] = 'H'
-#kb.tell(expr('H_A0'))
-#kb.tell(expr('H_A1'))
+    def knowledge_base_definition(self):
+        '''Defines the agent's knowledge base by codifying game rules and strategies'''
+        # U = Unknown  H = Hit  M = Miss  S = Sunk  E = Empty
+        # Initialize all 10 x 10 grid as an empty grid
+        for x in range(self.size):
+            for y in range(self.size):
+                self.kb.tell(expr(f'Unknown_{x}{y}'))
 
-agent_grid_adv[C][3] = 'H'
-kb.tell(expr('H_C3'))
-x = C
-y = 3
-last_hit = 0
-for _ in range(4):
-    agent_grid_adv, kb, score, x, y, last_hit = make_move(agent_grid_adv, human_grid_own, kb, score, x, y, last_hit, GRID_SIZE)
-    print(f'score:{score} x:{x} y:{y} last_hit:{last_hit}')
-    print_grid(human_grid_own)
-    print_grid(agent_grid_adv)
+        # A Miss is equal to Empty and viceversa, so this is a biconditional which can be written as 2 implications
+        for x in range(self.size):
+            for y in range(self.size):
+                self.kb.tell(expr(f'Miss_{x}{y}==>Empty_{x}{y}'))
+        for x in range(self.size):
+            for y in range(self.size):
+                self.kb.tell(expr(f'Empty_{x}{y}==>Miss_{x}{y}'))
+
+        # Case when we have 1 Hit and 3 adjacent Misses (edges of the grid are excluded)
+        for x in range(1, self.size - 1):
+            for y in range(1, self.size - 1):
+                self.kb.tell(expr(f'(Hit_{x}{y} & Miss_{x}{y - 1} & Miss_{x - 1}{y} & Miss_{x + 1}{y})==>Hit_{x}{y + 1}'))
+                self.kb.tell(expr(f'(Hit_{x}{y} & Miss_{x}{y + 1} & Miss_{x + 1}{y} & Miss_{x - 1}{y})==>Hit_{x}{y - 1}'))
+                self.kb.tell(expr(f'(Hit_{x}{y} & Miss_{x - 1}{y} & Miss_{x}{y - 1} & Miss_{x}{y + 1})==>Hit_{x + 1}{y}'))
+                self.kb.tell(expr(f'(Hit_{x}{y} & Miss_{x + 1}{y} & Miss_{x}{y - 1} & Miss_{x}{y + 1})==>Hit_{x - 1}{y}'))
+
+        # Case when we have 1 Hit and 2 adjacent Misses, on the left and right edge of the grid (G[0][0], G[0][N], G[M][0] and G[M][N] are excluded)
+        for x in range(1, self.size - 1):
+            self.kb.tell(expr(f'(Hit_{x}0 & Miss_{x - 1}0 & Miss_{x + 1}0)==>Hit_{x}1'))
+            self.kb.tell(expr(f'(Hit_{x}0 & Miss_{x}1 & Miss_{x + 1}0)==>Hit_{x - 1}0'))
+            self.kb.tell(expr(f'(Hit_{x}0 & Miss_{x}1 & Miss_{x - 1}0)==>Hit_{x + 1}0'))
+            self.kb.tell(expr(f'(Hit_{x}9 & Miss_{x - 1}9 & Miss_{x + 1}9)==>Hit_{x}8'))
+            self.kb.tell(expr(f'(Hit_{x}9 & Miss_{x}8 & Miss_{x + 1}9)==>Hit_{x - 1}9'))
+            self.kb.tell(expr(f'(Hit_{x}9 & Miss_{x}8 & Miss_{x - 1}9)==>Hit_{x + 1}9'))
+
+        # Case when we have 1 Hit and 2 adjacent Misses, on the lowest and highest edge of the grid (G[0][0], G[0][N], G[M][0] and G[M][N] are excluded)
+        for y in range(1, self.size - 1):
+            self.kb.tell(expr(f'(Hit_0{y} & Miss_0{y - 1} & Miss_0{y + 1})==>Hit_1{y}'))
+            self.kb.tell(expr(f'(Hit_0{y} & Miss_1{y} & Miss_0{y + 1})==>Hit_1{y - 1}'))
+            self.kb.tell(expr(f'(Hit_0{y} & Miss_1{y} & Miss_0{y - 1})==>Hit_1{y + 1}'))
+            self.kb.tell(expr(f'(Hit_9{y} & Miss_9{y - 1} & Miss_9{y + 1})==>Hit_1{y}'))
+            self.kb.tell(expr(f'(Hit_9{y} & Miss_8{y} & Miss_9{y + 1})==>Hit_9{y - 1}'))
+            self.kb.tell(expr(f'(Hit_9{y} & Miss_8{y} & Miss_9{y - 1})==>Hit_9{y + 1}'))
+
+        # Case for G[0][0], G[0][N], G[M][0] and G[M][N]
+        self.kb.tell(expr(f'(Hit_00 & Miss_01)==>Hit_10'))
+        self.kb.tell(expr(f'(Hit_00 & Miss_10)==>Hit_01'))
+        self.kb.tell(expr(f'(Hit_90 & Miss_80)==>Hit_91'))
+        self.kb.tell(expr(f'(Hit_90 & Miss_91)==>Hit_80'))
+        self.kb.tell(expr(f'(Hit_09 & Miss_08)==>Hit_19'))
+        self.kb.tell(expr(f'(Hit_09 & Miss_19)==>Hit_08'))
+        self.kb.tell(expr(f'(Hit_99 & Miss_89)==>Hit_98'))
+        self.kb.tell(expr(f'(Hit_99 & Miss_98)==>Hit_89'))
+
+        # All adjacent cells around a Sunk cell are Empty
+        for x in range(self.size):
+            for y in range(self.size):
+                if (x != 0):
+                    self.kb.tell(expr(f'(Sunk_{x}{y} & Unknown_{x - 1}{y})==>Empty_{x - 1}{y}'))
+                if (x != self.size - 1):
+                    self.kb.tell(expr(f'(Sunk_{x}{y} & Unknown_{x + 1}{y})==>Empty_{x + 1}{y}'))
+                if (y != 0):
+                    self.kb.tell(expr(f'(Sunk_{x}{y} & Unknown_{x}{y - 1})==>Empty_{x}{y - 1}'))
+                if (y !=  self.size - 1):
+                    self.kb.tell(expr(f'(Sunk_{x}{y} & Unknown_{x}{y + 1})==>Empty_{x}{y + 1}')) 
+    #if I have two adjacent hit, cells that are adjacent to these two, but in different rows o columns from them, are miss (IMPLEMENT
+
+    def add_knowledge(self, cell, result):
+        """Adds knowledge to KB based on stroke result"""
+        if result == 'hit':
+            self.hits.append(cell)
+            self.kb.tell(expr(f'Hit_{cell}'))
+        elif result == 'miss':
+            self.misses.append(cell)
+            self.kb.tell(expr(f'Miss_{cell}'))
+
+    def adjacent_cells(self, cell):
+        """Returns the boxes adjacent to a given cell"""
+        x, y = cell
+        adjacent = [(x + dx, y + dy) for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]]
+        return [(i, j) for i, j in adjacent if 0 <= i < self.size and 0 <= j < self.size]
+
+    def make_inferenced_move(self, cell):
+        x, y = cell
+        move = (x - 1, y)
+        if x != 0 and pl_fc_entails(self.kb, expr(f'Hit_{x - 1}{y}')) and move not in self.hits and move not in self.misses:
+            return move
+        move = (x + 1, y)
+        if x != (self.size - 1) and pl_fc_entails(self.kb, expr(f'Hit_{x + 1}{y}')) and move not in self.hits and move not in self.misses:
+            return move
+        move = (x, y - 1)
+        if y != 0 and pl_fc_entails(self.kb, expr(f'Hit_{x}{y - 1}')) and move not in self.hits and move not in self.misses:
+            return move
+        move = (x, y + 1)
+        if y != (self.size - 1) and pl_fc_entails(self.kb, expr(f'Hit_{x}{y + 1}')) and move not in self.hits and move not in self.misses:
+            return move
+        return (-1, -1)
+
+    def choose_next_move(self):
+        """Chooses the next move based on current knowledge base"""
+        for cell in self.hits:
+            inference = self.make_inferenced_move(cell)
+            if inference != (-1, -1):
+                return inference
+
+        for cell in self.hits:
+            for adj in self.adjacent_cells(cell):
+                if adj not in self.hits and adj not in self.misses:
+                    return adj
+        # If there are no recent hits, choose a random cell
+        while True:
+            move = (random.randint(0, self.size-1), random.randint(0, self.size-1))
+            if move not in self.hits and move not in self.misses:
+                return move
+
+def main():
+    A, B, C, D, E, F, G, H, I, J = range(10)
+    grid_size = 10
+    human_ships = [
+        # 4 PatrolBoat (2 cells) 
+        [(B, 8), (C, 8)], 
+        [(F, 8), (F, 9)],
+        [(J, 4), (J, 5)],
+        [(I, 9), (J, 9)],
+        # 3 Destroyer (3 cells)
+        [(H, 6), (H, 7), (H, 8)],
+        [(C, 2), (D, 2), (E, 2)],
+        [(J, 0), (J, 1), (J, 2)],
+        # 2 Battleship (4 cells)
+        [(C, 0), (D, 0), (E, 0), (F, 0)],
+        [(E, 4), (E, 5), (E, 6), (E, 7)],
+        # 1 Carrier (6 cells)
+        [(A, 0), (A, 1), (A, 2), (A, 3), (A, 4), (A, 5)]
+    ]
+    agent_ships = [
+        # 4 PatrolBoat (2 cells) 
+        [(A, 0), (A, 1)], 
+        [(C, 2), (C, 3)],
+        [(E, 4), (E, 5)],
+        [(I, 1), (J, 1)],
+        # 3 Destroyer (3 cells)
+        [(A, 7), (B, 7), (C, 7)],
+        [(I, 3), (I, 4), (I, 5)],
+        [(E, 0), (E, 1), (E, 2)],
+        # 2 Battleship (4 cells)
+        [(G, 2), (G, 3), (G, 4), (G, 5)],
+        [(G, 7), (H, 7), (I, 7), (J, 7)],
+        # 1 Carrier (6 cells)
+        [(D, 9), (E, 9), (F, 9), (G, 9), (H, 9), (I, 9)]
+    ]
+    game = BattleshipGame(grid_size, agent_ships, human_ships)
+    game.play()
+
+if __name__ == "__main__":
+    main()
