@@ -40,7 +40,8 @@ class BattleshipGame:
     def update_grid(self, turn):
         if turn == 'A':
             for cell in self.agent.hits:
-                self.agent_grid_adv[cell[0]][cell[1]] = 'H'
+                if self.agent_grid_adv[cell[0]][cell[1]] != 'S':
+                    self.agent_grid_adv[cell[0]][cell[1]] = 'H'
             for cell in self.agent.misses:
                 self.agent_grid_adv[cell[0]][cell[1]] = 'M'
         else:
@@ -59,10 +60,12 @@ class BattleshipGame:
     def update_sunk_adjiances(self, ship):
         '''Upgrade miss cells around sunk cells'''
         for cell in ship:
+            self.agent.add_knowledge(cell, "sunk")
+            self.agent_grid_adv[cell[0]][cell[1]] = 'S'
             adj = self.agent.get_adjacent_cells(cell)
             for cell in adj:
                 if cell not in self.agent.misses and cell not in self.agent.hits:
-                    self.agent.add_knowledge(cell, "sunk")
+                    self.agent.add_knowledge(cell, "miss")
                     x, y = cell
                     self.agent_grid_adv[x][y] = 'M'
 
@@ -73,9 +76,6 @@ class BattleshipGame:
                 if ship not in self.human_sunk and all(cell in self.agent.hits for cell in ship):
                     self.human_sunk.append(ship)
                     print("\033[32msunk!\033[0m\n")
-                    for cell in ship:
-                        self.agent.kb.tell(expr(f'Sunk_{cell}'))
-                        self.agent_grid_adv[cell[0]][cell[1]] = 'S'
                     self.update_sunk_adjiances(ship)
         else:
             for ship in self.agent_ships:
@@ -115,18 +115,18 @@ class BattleshipGame:
             for i, j in ship:
                 self.agent_grid_own[i][j] = 'P'
 
-        self.agent.hits.append((7, 6))
-        self.agent.hits.append((7, 7))
-        self.agent_grid_adv[7][6] = 'H'
-        self.agent_grid_adv[7][7] = 'H'
-        self.agent.kb.tell(expr('Hit_(7, 7)'))
-        self.agent.kb.tell(expr('Hit_(7, 6)'))
-
         turn = random.choice(['H', 'A'])
+        human_move_counter = agent_move_counter = 0
 
         while True:
+            move = ()
             if (turn == 'A'):
-                move = self.agent.choose_next_move()
+                agent_move_counter += 1
+                print(f"\033[32mAI turn: {agent_move_counter}\033[0m\n")
+                if agent_move_counter % 10 == 0:
+                    move = self.agent.check_globally()
+                if move == ():
+                    move = self.agent.choose_next_move()
                 print(f"\033[32mAI tries: ({chr(65 + move[0])}, {move[1]})\033[0m")
                 result = self.check_hit(move, self.human_ships)
                 print(f"\033[32m{result}!\033[0m\n")
@@ -140,10 +140,12 @@ class BattleshipGame:
 
                 if len(self.agent.hits) == sum(len(ship) for ship in self.human_ships):
                     print("\033[32mAll ships sunk!\033[0m")
-                    print("\033[32mAI won\033[0m!")
+                    print("\033[32mAI won!\033[0m\n")
                     break
                 turn = 'H'
             else:
+                human_move_counter += 1
+                print(f"AI turn: {human_move_counter}\n")
                 move = self.human_next_move()
                 print(f"User tries: ({chr(65 + move[0])}, {move[1]})")
                 result = self.check_hit(move, self.agent_ships)
