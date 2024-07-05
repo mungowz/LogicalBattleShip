@@ -13,8 +13,8 @@ class BattleshipGame:
         self.human_grid_adv = self.create_grid() # Human grid where the moves made are memorized
         self.agent_grid_own = self.create_grid() # Agent grid where one's pawns are placed
         self.agent_grid_adv = self.create_grid() # Agent grid where the moves made are memorized
-        self.human_hits = []
-        self.human_misses = []
+        self.human_hits = [] # List of boxes hit unsuccessfully
+        self.human_misses = [] # List of boxes hit unsuccessfully
 
     def create_grid(self):
         grid = []
@@ -57,16 +57,27 @@ class BattleshipGame:
                 return "hit"
         return "miss"
 
+    def update_sunk_adjiances(self, ship):
+        '''Upgrade miss cells around sunk cells'''
+        for cell in ship:
+            adj = self.agent.get_adjacent_cells(cell)
+            for cell in adj:
+                if cell not in self.agent.misses and cell not in self.agent.hits:
+                    self.agent.add_knowledge(cell, "sunk")
+                    x, y = cell
+                    self.agent_grid_adv[x][y] = 'M'
+
     def check_sunk(self, cell, turn):
+        '''Check after a hit if the hit ship was also sunk'''
         if turn == 'A':
             for ship in self.human_ships:
                 if ship not in self.human_sunk and all(cell in self.agent.hits for cell in ship):
                     self.human_sunk.append(ship)
                     print("\033[32msunk!\033[0m\n")
                     for cell in ship:
-                        print(cell)
                         self.agent.kb.tell(expr(f'Sunk_{cell}'))
                         self.agent_grid_adv[cell[0]][cell[1]] = 'S'
+                    self.update_sunk_adjiances(ship)
         else:
             for ship in self.agent_ships:
                 if ship not in self.agent_sunk and all(cell in self.human_hits for cell in ship):
@@ -269,8 +280,10 @@ class BattleshipAgent:
         elif result == 'miss':
             self.misses.append(cell)
             self.kb.tell(expr(f'Miss_{cell}'))
+        else:
+            self.kb.tell(expr(f"Sunk_{cell}"))
 
-    def adjacent_cells(self, cell):
+    def get_adjacent_cells(self, cell):
         """Returns the boxes adjacent to a given cell"""
         x, y = cell
         adjacent = [(x + dx, y + dy) for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]]
@@ -300,7 +313,7 @@ class BattleshipAgent:
                 return inference
 
         for cell in self.hits:
-            for adj in self.adjacent_cells(cell):
+            for adj in self.get_adjacent_cells(cell):
                 if adj not in self.hits and adj not in self.misses :
                     if pl_fc_entails(self.kb, expr(f"Miss_{adj}")):
                         print(f"\033[32mInferred ({chr(65 + adj[0])}, {adj[1]}) as miss\033[0m")
